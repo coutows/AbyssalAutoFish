@@ -1,7 +1,6 @@
-
 --==================================================
--- ABYSSAL AUTOFISH | V6.2.1 REFINED
--- XENO EDITION
+-- ABYSSAL AUTOFISH | V7.0
+-- UI simplificada + historico de raridade
 --==================================================
 
 local Players = game:GetService("Players")
@@ -12,84 +11,55 @@ local CoreGui = game:GetService("CoreGui")
 local Player = Players.LocalPlayer
 local PlayerGui = Player:WaitForChild("PlayerGui")
 
---==================================================
--- CONFIGURATION
---==================================================
-
 local Config = {
     Enabled = false,
-    AutoCast = true,
-    AutoReel = true,
-    QuickCast = true,
-    AutoRetry = true,
-
-    RareProtection = true,
-
-    Cooldown = 0.06,
-    KeyDelay = 0.015,
-    CastDelay = 0.22,
-    CastButtonRefresh = 0.75,
-    CastInputTimeout = 0.30,
-    ClickReleaseDelay = 0.012,
-    CircleAngleTolerance = 42,
-    CircleRadiusTolerance = 0.30,
-
-    ScanInterval = 0.06,
-    ObjectCacheInterval = 2.5,
-    TargetCacheInterval = 0.75,
-    CounterInterval = 1.0,
-    HistoryLimit = 12
+    ScanInterval = 0.045,
+    ObjectRefresh = 0.65,
+    TargetRefresh = 0.12,
+    CastDelay = 0.55,
+    KeyDelay = 0.018,
+    ClickCooldown = 0.055,
+    ArcTolerance = 43,
+    RadiusTolerance = 0.32,
+    HistoryLimit = 10,
 }
 
 local State = {
-    LastPress = 0,
-    LastCast = 0,
     LastScan = 0,
-    LastCounterUpdate = 0,
-    LastHistoryUpdate = 0,
-    CastPending = false,
-    CachedFishButton = nil,
-    LastFishButtonSearch = 0,
-    LastCastAttempt = 0,
+    LastCast = 0,
+    LastPress = 0,
+    LastObjectRefresh = 0,
+    LastTargetRefresh = 0,
+    LastBackpackRead = 0,
+    LastBackpackCount = nil,
     LastMinigameSeen = 0,
-    LastObjectCacheUpdate = 0,
+    CastPending = false,
+    Fishing = false,
+    CachedFishButton = nil,
     CachedFishingGui = nil,
-    CachedGuiObjects = {},
-    CachedGreenObjects = {},
-    CachedCircleCenter = nil,
-    CachedCircleRadius = nil,
-    LastTargetCacheUpdate = 0,
-
-    Hits = 0,
-    FishCaught = 0,
-    Coins = nil,
-
-    Previous = {},
+    GuiObjects = {},
+    GreenObjects = {},
+    CircleCenter = nil,
+    CircleRadius = nil,
     PreviousPositions = {},
     ClickedBalls = setmetatable({}, {__mode = "k"}),
-    Fishing = false,
-    LastBackpackCount = nil,
-
-    StartedAt = os.clock(),
+    FishCaught = 0,
+    Hits = 0,
     History = {},
-    LastStatus = "DESLIGADO"
+    SeenCatchMessages = {},
+    StartedAt = os.clock(),
 }
 
 --==================================================
--- CLEAN OLD GUI
+-- GUI
 --==================================================
 
 pcall(function()
     local hui = gethui and gethui()
     local old = (hui and hui:FindFirstChild("AbyssalAutoFish"))
         or CoreGui:FindFirstChild("AbyssalAutoFish")
-
     if old then old:Destroy() end
 end)
-
---==================================================
--- GUI HELPERS
---==================================================
 
 local GUI = Instance.new("ScreenGui")
 GUI.Name = "AbyssalAutoFish"
@@ -98,13 +68,13 @@ GUI.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 GUI.Parent = (gethui and gethui()) or CoreGui
 
 local Panel = Instance.new("Frame")
-Panel.Size = UDim2.fromOffset(350, 440)
-Panel.Position = UDim2.new(0, 30, 0.2, 0)
+Panel.Name = "Main"
+Panel.Size = UDim2.fromOffset(330, 390)
+Panel.Position = UDim2.new(0, 28, 0.22, 0)
 Panel.BackgroundColor3 = Color3.fromRGB(13, 19, 29)
 Panel.BorderSizePixel = 0
 Panel.Active = true
 Panel.Draggable = true
-Panel.ClipsDescendants = true
 Panel.Parent = GUI
 
 local function corner(obj, radius)
@@ -113,370 +83,194 @@ local function corner(obj, radius)
     c.Parent = obj
 end
 
-corner(Panel, 15)
+corner(Panel, 14)
 
-local stroke = Instance.new("UIStroke")
-stroke.Color = Color3.fromRGB(35, 210, 150)
-stroke.Thickness = 1.4
-stroke.Parent = Panel
-
-local function label(parent, text, size, color, pos, dims)
-    local l = Instance.new("TextLabel")
-    l.BackgroundTransparency = 1
-    l.Text = text
-    l.TextColor3 = color
-    l.TextSize = size
-    l.Font = Enum.Font.GothamBold
-    l.TextXAlignment = Enum.TextXAlignment.Left
-    l.Position = pos
-    l.Size = dims
-    l.Parent = parent
-    return l
-end
-
-local function makeButton(parent, text, pos, dims, color)
-    local b = Instance.new("TextButton")
-    b.Text = text
-    b.Position = pos
-    b.Size = dims
-    b.BackgroundColor3 = color
-    b.TextColor3 = Color3.new(1,1,1)
-    b.TextSize = 11
-    b.Font = Enum.Font.GothamBold
-    b.Parent = parent
-    corner(b, 8)
-    return b
-end
-
---==================================================
--- HEADER
---==================================================
+local outline = Instance.new("UIStroke")
+outline.Color = Color3.fromRGB(35, 210, 150)
+outline.Thickness = 1.3
+outline.Parent = Panel
 
 local Header = Instance.new("Frame")
-Header.Size = UDim2.new(1,0,0,65)
-Header.BackgroundColor3 = Color3.fromRGB(19,31,42)
+Header.Size = UDim2.new(1, 0, 0, 58)
+Header.BackgroundColor3 = Color3.fromRGB(19, 31, 42)
 Header.BorderSizePixel = 0
 Header.Parent = Panel
-corner(Header,15)
+corner(Header, 14)
 
-label(Header,"ABYSSAL",22,
-    Color3.fromRGB(65,235,175),
-    UDim2.fromOffset(16,8),
-    UDim2.fromOffset(200,27))
+local function label(parent, text, size, color, pos, dims)
+    local obj = Instance.new("TextLabel")
+    obj.BackgroundTransparency = 1
+    obj.Text = text
+    obj.TextColor3 = color
+    obj.TextSize = size
+    obj.Font = Enum.Font.GothamBold
+    obj.TextXAlignment = Enum.TextXAlignment.Left
+    obj.Position = pos
+    obj.Size = dims
+    obj.Parent = parent
+    return obj
+end
 
-label(Header,"REFINED QUICKCAST | ULTRA LIGHT",9,
-    Color3.fromRGB(145,165,180),
-    UDim2.fromOffset(18,37),
-    UDim2.fromOffset(220,16))
+local function button(parent, text, pos, dims, color)
+    local obj = Instance.new("TextButton")
+    obj.Text = text
+    obj.Position = pos
+    obj.Size = dims
+    obj.BackgroundColor3 = color
+    obj.TextColor3 = Color3.new(1, 1, 1)
+    obj.TextSize = 11
+    obj.Font = Enum.Font.GothamBold
+    obj.AutoButtonColor = true
+    obj.Parent = parent
+    corner(obj, 8)
+    return obj
+end
 
-local Close = makeButton(Header,"X",
-    UDim2.new(1,-40,0,15),
-    UDim2.fromOffset(27,27),
-    Color3.fromRGB(145,55,60))
+label(Header, "ABYSSAL", 21, Color3.fromRGB(65, 235, 175),
+    UDim2.fromOffset(15, 7), UDim2.fromOffset(190, 25))
+label(Header, "AUTOFISH V7.0  |  RARITY TRACKER", 8,
+    Color3.fromRGB(145, 165, 180),
+    UDim2.fromOffset(17, 34), UDim2.fromOffset(230, 14))
 
-local Minimize = makeButton(Header,"—",
-    UDim2.new(1,-73,0,15),
-    UDim2.fromOffset(27,27),
-    Color3.fromRGB(35,52,62))
-
---==================================================
--- STATUS
---==================================================
+local Minimize = button(Header, "—", UDim2.new(1, -69, 0, 14),
+    UDim2.fromOffset(25, 26), Color3.fromRGB(35, 52, 62))
+local Close = button(Header, "X", UDim2.new(1, -37, 0, 14),
+    UDim2.fromOffset(25, 26), Color3.fromRGB(145, 55, 60))
 
 local StatusCard = Instance.new("Frame")
-StatusCard.Position = UDim2.fromOffset(12,76)
-StatusCard.Size = UDim2.new(1,-24,0,35)
-StatusCard.BackgroundColor3 = Color3.fromRGB(24,34,45)
+StatusCard.Position = UDim2.fromOffset(12, 69)
+StatusCard.Size = UDim2.new(1, -24, 0, 34)
+StatusCard.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
 StatusCard.Parent = Panel
-corner(StatusCard,8)
+corner(StatusCard, 8)
 
-local Status = label(StatusCard,"● DESLIGADO",11,
-    Color3.fromRGB(220,90,90),
-    UDim2.fromOffset(10,0),
-    UDim2.new(1,-20,1,0))
+local Status = label(StatusCard, "● DESLIGADO", 10,
+    Color3.fromRGB(220, 90, 90), UDim2.fromOffset(10, 0),
+    UDim2.new(1, -20, 1, 0))
 
---==================================================
--- TABS
---==================================================
+local Tabs = Instance.new("Frame")
+Tabs.Position = UDim2.fromOffset(12, 112)
+Tabs.Size = UDim2.new(1, -24, 0, 30)
+Tabs.BackgroundTransparency = 1
+Tabs.Parent = Panel
 
-local TabBar = Instance.new("Frame")
-TabBar.Position = UDim2.fromOffset(12,120)
-TabBar.Size = UDim2.new(1,-24,0,32)
-TabBar.BackgroundTransparency = 1
-TabBar.Parent = Panel
+local Content = Instance.new("Frame")
+Content.Position = UDim2.fromOffset(12, 150)
+Content.Size = UDim2.new(1, -24, 1, -162)
+Content.BackgroundTransparency = 1
+Content.Parent = Panel
 
-local Pages = Instance.new("Frame")
-Pages.Position = UDim2.fromOffset(12,160)
-Pages.Size = UDim2.new(1,-24,1,-172)
-Pages.BackgroundTransparency = 1
-Pages.Parent = Panel
-
-local function createPage()
+local function makePage()
     local page = Instance.new("ScrollingFrame")
-    page.Size = UDim2.fromScale(1,1)
+    page.Size = UDim2.fromScale(1, 1)
     page.BackgroundTransparency = 1
     page.BorderSizePixel = 0
     page.ScrollBarThickness = 3
-    page.CanvasSize = UDim2.new(0,0,0,0)
+    page.CanvasSize = UDim2.new()
     page.Visible = false
-    page.Parent = Pages
+    page.Parent = Content
 
     local layout = Instance.new("UIListLayout")
-    layout.Padding = UDim.new(0,7)
+    layout.Padding = UDim.new(0, 7)
     layout.Parent = page
-
     layout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-        page.CanvasSize = UDim2.new(0,0,0,layout.AbsoluteContentSize.Y+10)
+        page.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 8)
     end)
-
     return page
 end
 
-local FishingPage = createPage()
-local InventoryPage = createPage()
-local StatsPage = createPage()
+local FishPage = makePage()
+local CatchPage = makePage()
+FishPage.Visible = true
 
-FishingPage.Visible = true
+local function section(page, text)
+    local obj = label(page, text, 11, Color3.fromRGB(65, 220, 165),
+        UDim2.fromOffset(5, 0), UDim2.new(1, -10, 0, 23))
+    obj.LayoutOrder = #page:GetChildren()
+end
+
+local function valueRow(page, name, initial)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -5, 0, 34)
+    row.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
+    row.Parent = page
+    corner(row, 7)
+
+    label(row, name, 10, Color3.fromRGB(160, 180, 195),
+        UDim2.fromOffset(10, 0), UDim2.new(0.62, 0, 1, 0))
+    local value = label(row, tostring(initial), 11,
+        Color3.fromRGB(65, 235, 175), UDim2.new(0.62, 0, 0, 0),
+        UDim2.new(0.35, -8, 1, 0))
+    value.TextXAlignment = Enum.TextXAlignment.Right
+    return value
+end
 
 local function tab(name, x, page)
-    local b = makeButton(TabBar,name,
-        UDim2.fromOffset(x,0),
-        UDim2.fromOffset(100,30),
-        Color3.fromRGB(32,48,61))
-
+    local b = button(Tabs, name, UDim2.fromOffset(x, 0),
+        UDim2.fromOffset(145, 29), Color3.fromRGB(32, 48, 61))
     b.Activated:Connect(function()
-        FishingPage.Visible = false
-        InventoryPage.Visible = false
-        StatsPage.Visible = false
-        page.Visible = true
-
-        for _, tabButton in ipairs(TabBar:GetChildren()) do
-            if tabButton:IsA("TextButton") then
-                tabButton.BackgroundColor3 = (tabButton == b)
-                    and Color3.fromRGB(25,145,100)
-                    or Color3.fromRGB(32,48,61)
+        FishPage.Visible = page == FishPage
+        CatchPage.Visible = page == CatchPage
+        for _, item in ipairs(Tabs:GetChildren()) do
+            if item:IsA("TextButton") then
+                item.BackgroundColor3 = item == b
+                    and Color3.fromRGB(25, 145, 100)
+                    or Color3.fromRGB(32, 48, 61)
             end
         end
     end)
-
-    return b
 end
 
-tab("PESCA",0,FishingPage)
-tab("INVENTARIO",106,InventoryPage)
-tab("ESTATISTICAS",212,StatsPage)
+tab("PESCA", 0, FishPage)
+tab("CAPTURAS", 151, CatchPage)
 
---==================================================
--- PAGE HELPERS
---==================================================
-
-local function section(page,text)
-    local l = label(page,text,12,
-        Color3.fromRGB(65,220,165),
-        UDim2.fromOffset(5,0),
-        UDim2.new(1,-10,0,25))
-    l.LayoutOrder = #page:GetChildren()
-    return l
-end
-
-local function option(page,name,initial,callback)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1,-5,0,34)
-    row.BackgroundColor3 = Color3.fromRGB(24,34,45)
-    row.Parent = page
-    corner(row,7)
-
-    label(row,name,11,
-        Color3.fromRGB(225,235,240),
-        UDim2.fromOffset(10,0),
-        UDim2.new(1,-100,1,0))
-
-    local active = initial
-
-    local b = makeButton(row,active and "ON" or "OFF",
-        UDim2.new(1,-65,0,4),
-        UDim2.fromOffset(55,26),
-        active and Color3.fromRGB(25,145,100)
-            or Color3.fromRGB(75,85,100))
-
-    b.MouseButton1Click:Connect(function()
-        active = not active
-        b.Text = active and "ON" or "OFF"
-        b.BackgroundColor3 = active
-            and Color3.fromRGB(25,145,100)
-            or Color3.fromRGB(75,85,100)
-
-        callback(active)
-    end)
-
-    return b
-end
-
-local function valueRow(page,name,value)
-    local row = Instance.new("Frame")
-    row.Size = UDim2.new(1,-5,0,32)
-    row.BackgroundColor3 = Color3.fromRGB(24,34,45)
-    row.Parent = page
-    corner(row,7)
-
-    label(row,name,10,
-        Color3.fromRGB(160,180,195),
-        UDim2.fromOffset(10,0),
-        UDim2.new(0.65,0,1,0))
-
-    local val = label(row,tostring(value),12,
-        Color3.fromRGB(65,235,175),
-        UDim2.new(0.65,0,0,0),
-        UDim2.new(0.3,0,1,0))
-
-    return val
-end
-
---==================================================
--- FISHING PAGE
---==================================================
-
-section(FishingPage,"AUTOMACAO")
-
-local MainToggle = makeButton(FishingPage,
-    "ATIVAR AUTOFISH",
-    UDim2.new(),UDim2.new(1,-5,0,36),
-    Color3.fromRGB(25,145,100))
-
+section(FishPage, "CONTROLE")
+local MainToggle = button(FishPage, "ATIVAR AUTOFISH",
+    UDim2.new(), UDim2.new(1, -5, 0, 39),
+    Color3.fromRGB(25, 145, 100))
 MainToggle.LayoutOrder = 2
 
-option(FishingPage,"Quick Cast",true,function(v)
-    Config.QuickCast = v
-end)
+section(FishPage, "SESSAO")
+local BackpackValue = valueRow(FishPage, "Mochila", "-- / --")
+local FishValue = valueRow(FishPage, "Peixes capturados", "0")
+local HitValue = valueRow(FishPage, "Acertos no minigame", "0")
+local TimeValue = valueRow(FishPage, "Tempo ativo", "00:00")
 
-option(FishingPage,"Auto Cast",true,function(v)
-    Config.AutoCast = v
-end)
-
-option(FishingPage,"Auto Minigame",true,function(v)
-    Config.AutoReel = v
-end)
-
-option(FishingPage,"AutoRetry",true,function(v)
-    Config.AutoRetry = v
-end)
-
---==================================================
--- INVENTORY PAGE
---==================================================
-
-section(InventoryPage,"INVENTARIO E VENDAS")
-
-local BackpackValue = valueRow(
-    InventoryPage,"Mochila","-- / --")
-
-local FishValue = valueRow(
-    InventoryPage,"Peixes capturados",0)
-
-
-local CoinValue = valueRow(
-    InventoryPage,"Moedas","Não detectadas")
-
-option(InventoryPage,"Rare Fish Protection",true,function(v)
-    Config.RareProtection = v
-end)
-
-
-
---==================================================
--- STATISTICS PAGE
---==================================================
-
-section(StatsPage,"ESTATISTICAS DA SESSAO")
-
-local StatFish = valueRow(StatsPage,"Capturas",0)
-local StatHits = valueRow(StatsPage,"Cliques nas bolinhas",0)
-local StatCoins = valueRow(StatsPage,"Moedas","--")
-local StatTime = valueRow(StatsPage,"Tempo","00:00")
-
-section(StatsPage,"HISTORICO DE CAPTURAS")
-
+section(CatchPage, "ULTIMAS CAPTURAS")
 local HistoryFrame = Instance.new("Frame")
-HistoryFrame.Size = UDim2.new(1,-5,0,150)
-HistoryFrame.BackgroundColor3 = Color3.fromRGB(24,34,45)
-HistoryFrame.Parent = StatsPage
-corner(HistoryFrame,8)
+HistoryFrame.Size = UDim2.new(1, -5, 0, 245)
+HistoryFrame.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
+HistoryFrame.Parent = CatchPage
+corner(HistoryFrame, 8)
 
-local HistoryText = label(
-    HistoryFrame,
-    "Nenhuma captura registrada.",
-    10,
-    Color3.fromRGB(180,200,210),
-    UDim2.fromOffset(10,8),
-    UDim2.new(1,-20,1,-16))
-
+local HistoryText = label(HistoryFrame, "Nenhuma captura detectada.",
+    10, Color3.fromRGB(210, 220, 225),
+    UDim2.fromOffset(10, 8), UDim2.new(1, -20, 1, -16))
 HistoryText.TextYAlignment = Enum.TextYAlignment.Top
 HistoryText.TextWrapped = true
 
 --==================================================
--- KEY INPUT
+-- INPUT / UTILITIES
 --==================================================
 
 local function pressKey(key)
     return pcall(function()
-        VIM:SendKeyEvent(true,key,false,game)
+        VIM:SendKeyEvent(true, key, false, game)
         task.wait(Config.KeyDelay)
-        VIM:SendKeyEvent(false,key,false,game)
+        VIM:SendKeyEvent(false, key, false, game)
     end)
 end
 
-
---==================================================
--- BACKPACK COUNTER
---==================================================
-
-local function getBackpack()
-    for _,obj in ipairs(PlayerGui:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local a,b = obj.Text:match(
-                "Backpack:%s*(%d+)%s*/%s*(%d+)")
-
-            if a then
-                return tonumber(a),tonumber(b)
-            end
+local function isVisible(obj)
+    if not obj:IsA("GuiObject") or not obj.Visible then return false end
+    local parent = obj.Parent
+    while parent and parent ~= PlayerGui do
+        if parent:IsA("GuiObject") and not parent.Visible then
+            return false
         end
+        parent = parent.Parent
     end
-end
-
---==================================================
--- COIN COUNTER
---==================================================
-
-local function getCoins()
-    for _,obj in ipairs(PlayerGui:GetDescendants()) do
-        if obj:IsA("TextLabel") then
-            local t = obj.Text
-            local number = t:match("([%d,]+)%s*[Cc]oins")
-                or t:match("[Cc]oins:%s*([%d,]+)")
-
-            if number then
-                return tonumber((number:gsub(",","")))
-            end
-        end
-    end
-end
-
---==================================================
--- FISHING GUI
---==================================================
-
-local function getFishing()
-    return PlayerGui:FindFirstChild("PescariaGui",true)
-end
-
-local function getRedArea(fishing)
-    if not fishing then return nil end
-
-    -- Primeiro tenta nomes comuns; se não encontrar, o detector circular
-    -- usa o painel do minigame e a posição dos marcadores verdes.
-    return fishing:FindFirstChild("AreaVermelha", true)
-        or fishing:FindFirstChild("RedArea", true)
-        or fishing:FindFirstChild("Target", true)
+    return true
 end
 
 local function getColor(obj)
@@ -487,169 +281,254 @@ local function getColor(obj)
 end
 
 local function isGreen(obj)
-    local c = getColor(obj)
-    local s = obj.AbsoluteSize
-    local roundEnough = math.abs(s.X - s.Y) <= 8
-
-    return c.G > 0.55
-        and c.G > c.R * 1.25
-        and c.G > c.B * 0.80
-        and s.X >= 8 and s.X <= 30
-        and s.Y >= 8 and s.Y <= 30
-        and roundEnough
+    local ok, color, size = pcall(function()
+        return getColor(obj), obj.AbsoluteSize
+    end)
+    if not ok then return false end
+    return color.G > 0.55
+        and color.G > color.R * 1.25
+        and color.G > color.B * 0.80
+        and size.X >= 8 and size.X <= 32
+        and size.Y >= 8 and size.Y <= 32
+        and math.abs(size.X - size.Y) <= 9
 end
 
 local function isRed(obj)
-    local c = getColor(obj)
-    return c.R > 0.55 and c.R > c.G * 1.35 and c.R > c.B * 1.25
+    local ok, color = pcall(getColor, obj)
+    return ok and color.R > 0.55
+        and color.R > color.G * 1.35
+        and color.R > color.B * 1.25
 end
-
---==================================================
--- MINIGAME DETECTOR
---==================================================
 
 local function centerOf(obj)
-    return obj.AbsolutePosition + (obj.AbsoluteSize / 2)
+    return obj.AbsolutePosition + obj.AbsoluteSize / 2
 end
 
-local function isGuiVisible(obj)
-    if not obj:IsA("GuiObject") or not obj.Visible then return false end
-    local parent = obj.Parent
-    while parent and parent ~= PlayerGui do
-        if parent:IsA("GuiObject") and not parent.Visible then return false end
-        parent = parent.Parent
+local function getFishing()
+    return PlayerGui:FindFirstChild("PescariaGui", true)
+end
+
+--==================================================
+-- BACKPACK + CATCH RARITY
+-- A notificação visível do jogo mostra nome e raridade.
+-- Exemplo visto no vídeo: "Discus" / "Epic · 0.35 kg · 1884 coins".
+--==================================================
+
+local Rarities = {
+    "Secret", "Mythical", "Legendary", "Epic",
+    "Rare", "Uncommon", "Common",
+}
+
+local function getRarity(text)
+    local lower = string.lower(text or "")
+    for _, rarity in ipairs(Rarities) do
+        if lower:find(string.lower(rarity), 1, true) then
+            return rarity
+        end
     end
-    return true
+    return nil
 end
 
-local function getCircularTarget(fishing, greens, guiObjects)
-    -- Usa a lista em cache: evita GetDescendants() repetido a cada varredura.
-    local best, bestScore = nil, -math.huge
-    for _, obj in ipairs(guiObjects) do
-        if obj.Parent and isGuiVisible(obj) then
-            local ok, red = pcall(isRed, obj)
-            if ok and red then
-                local size = obj.AbsoluteSize
-                local ratio = size.X / math.max(size.Y, 1)
-                if size.X >= 35 and size.Y >= 20 and ratio >= 0.55 and ratio <= 2.0 then
-                    local score = size.X * size.Y
-                    if score > bestScore then
-                        best, bestScore = obj, score
+local function cleanText(text)
+    return (text or ""):gsub("<[^>]->", ""):gsub("%s+", " "):gsub("^%s+", ""):gsub("%s+$", "")
+end
+
+local function addCatch(message)
+    message = cleanText(message)
+    if message == "" or State.SeenCatchMessages[message] then return end
+    State.SeenCatchMessages[message] = os.clock()
+
+    local rarity = getRarity(message) or "Raridade não identificada"
+    table.insert(State.History, 1, os.date("%H:%M:%S") .. "  •  " .. message .. "  [" .. rarity .. "]")
+
+    while #State.History > Config.HistoryLimit do
+        table.remove(State.History)
+    end
+
+    HistoryText.Text = table.concat(State.History, "\n\n")
+end
+
+local function inspectCatchText(obj)
+    if not (obj:IsA("TextLabel") or obj:IsA("TextButton")) then return end
+    local text = cleanText(obj.Text)
+    if text == "" then return end
+
+    local rarity = getRarity(text)
+    local hasCatchDetails = text:lower():find("kg", 1, true)
+        or text:lower():find("coins", 1, true)
+
+    if rarity and hasCatchDetails then
+        -- Tenta incluir o nome do peixe exibido imediatamente acima/abaixo.
+        local fishName = nil
+        local parent = obj.Parent
+        if parent then
+            for _, sibling in ipairs(parent:GetChildren()) do
+                if sibling ~= obj and (sibling:IsA("TextLabel") or sibling:IsA("TextButton")) then
+                    local candidate = cleanText(sibling.Text)
+                    if candidate ~= "" and not getRarity(candidate)
+                        and not candidate:lower():find("kg", 1, true)
+                        and not candidate:lower():find("coins", 1, true) then
+                        fishName = candidate
+                        break
                     end
+                end
+            end
+        end
+
+        local details = text:gsub("%s*[·•|]?%s*[%d,]+%s*[Cc]oins?.*$", "")
+        addCatch((fishName and (fishName .. " — ") or "") .. details)
+    end
+end
+
+local function scanCatchNotifications()
+    for _, obj in ipairs(PlayerGui:GetDescendants()) do
+        inspectCatchText(obj)
+    end
+end
+
+-- Captura textos novos e textos de notificações reutilizadas pelo jogo.
+local function hookTextObject(obj)
+    if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+        inspectCatchText(obj)
+        obj:GetPropertyChangedSignal("Text"):Connect(function()
+            inspectCatchText(obj)
+        end)
+    end
+end
+
+for _, obj in ipairs(PlayerGui:GetDescendants()) do
+    hookTextObject(obj)
+end
+PlayerGui.DescendantAdded:Connect(hookTextObject)
+
+local function getBackpack()
+    for _, obj in ipairs(PlayerGui:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+            local a, b = (obj.Text or ""):match("Backpack:%s*(%d+)%s*/%s*(%d+)")
+            if a then return tonumber(a), tonumber(b) end
+        end
+    end
+end
+
+local function updateCounters()
+    local now = os.clock()
+    if now - State.LastBackpackRead < 0.45 then return end
+    State.LastBackpackRead = now
+
+    local current, maximum = getBackpack()
+    if current then
+        BackpackValue.Text = current .. " / " .. maximum
+        if State.LastBackpackCount == nil then
+            State.LastBackpackCount = current
+        elseif current > State.LastBackpackCount then
+            State.FishCaught += current - State.LastBackpackCount
+        end
+        State.LastBackpackCount = current
+    end
+
+    FishValue.Text = tostring(State.FishCaught)
+    HitValue.Text = tostring(State.Hits)
+
+    local elapsed = math.floor(now - State.StartedAt)
+    TimeValue.Text = string.format("%02d:%02d", math.floor(elapsed / 60), elapsed % 60)
+end
+
+--==================================================
+-- MINIGAME DETECTION
+--==================================================
+
+local function refreshObjectCache(fishing, now)
+    if State.CachedFishingGui ~= fishing
+        or now - State.LastObjectRefresh >= Config.ObjectRefresh then
+
+        local objects, greens = {}, {}
+        for _, obj in ipairs(fishing:GetDescendants()) do
+            if obj:IsA("GuiObject") then
+                objects[#objects + 1] = obj
+                if isGreen(obj) then
+                    greens[#greens + 1] = obj
+                end
+            end
+        end
+
+        State.GuiObjects = objects
+        State.GreenObjects = greens
+        State.CachedFishingGui = fishing
+        State.LastObjectRefresh = now
+        State.LastTargetRefresh = 0
+        State.CircleCenter = nil
+        State.CircleRadius = nil
+    end
+end
+
+local function findCircle(fishing, greens, objects)
+    local bestRed, redScore = nil, -math.huge
+
+    for _, obj in ipairs(objects) do
+        if obj.Parent and isVisible(obj) and isRed(obj) then
+            local size = obj.AbsoluteSize
+            local ratio = size.X / math.max(size.Y, 1)
+            if size.X >= 35 and size.Y >= 20 and ratio >= 0.55 and ratio <= 2 then
+                local score = size.X * size.Y
+                if score > redScore then
+                    bestRed, redScore = obj, score
+                end
+            end
+        end
+    end
+
+    if bestRed then
+        local size = bestRed.AbsoluteSize
+        if math.abs(size.X - size.Y) <= math.max(size.X, size.Y) * 0.38 then
+            return bestRed.AbsolutePosition + size / 2, math.min(size.X, size.Y) * 0.5
+        end
+    end
+
+    local best, bestScore = nil, -math.huge
+    for _, obj in ipairs(objects) do
+        if obj.Parent and isVisible(obj) then
+            local size = obj.AbsoluteSize
+            local largest = math.max(size.X, size.Y)
+            local ratio = size.X / math.max(size.Y, 1)
+            if largest >= 85 and largest <= 360 and ratio >= 0.82 and ratio <= 1.22 then
+                local score = size.X * size.Y
+                if score > bestScore then
+                    best, bestScore = obj, score
                 end
             end
         end
     end
 
     if best then
-        local p, size = best.AbsolutePosition, best.AbsoluteSize
-        if math.abs(size.X - size.Y) <= math.max(size.X, size.Y) * 0.35 then
-            return p + size / 2, math.min(size.X, size.Y) * 0.5, best
-        end
-    end
-
-    local circleObject, circleScore = nil, -math.huge
-    for _, obj in ipairs(guiObjects) do
-        if obj.Parent and isGuiVisible(obj) then
-            local size = obj.AbsoluteSize
-            local largest = math.max(size.X, size.Y)
-            local ratio = size.X / math.max(size.Y, 1)
-            if largest >= 85 and largest <= 360
-                and ratio >= 0.82 and ratio <= 1.22 then
-                local score = size.X * size.Y
-                if score > circleScore then
-                    circleObject, circleScore = obj, score
-                end
-            end
-        end
-    end
-
-    if circleObject then
-        local p, size = circleObject.AbsolutePosition, circleObject.AbsoluteSize
-        return p + size / 2, math.min(size.X, size.Y) * 0.5, circleObject
+        local size = best.AbsoluteSize
+        return best.AbsolutePosition + size / 2, math.min(size.X, size.Y) * 0.5
     end
 
     if #greens >= 2 then
         local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge
         for _, ball in ipairs(greens) do
-            local c = centerOf(ball)
-            minX, maxX = math.min(minX, c.X), math.max(maxX, c.X)
-            minY, maxY = math.min(minY, c.Y), math.max(maxY, c.Y)
+            local p = centerOf(ball)
+            minX, maxX = math.min(minX, p.X), math.max(maxX, p.X)
+            minY, maxY = math.min(minY, p.Y), math.max(maxY, p.Y)
         end
         local center = Vector2.new((minX + maxX) / 2, (minY + maxY) / 2)
         local radius = math.max(maxX - minX, maxY - minY) * 0.5
-        if radius > 10 then return center, radius, nil end
+        if radius > 10 then return center, radius end
     end
-
-    return nil
 end
 
-local function angleDegrees(vector)
-    return math.deg(math.atan2(vector.Y, vector.X))
-end
-
-local function isInRedArc(point, center, radius)
+local function inRedArc(point, center, radius)
     if not center or not radius or radius <= 0 then return false end
     local delta = point - center
     local distance = delta.Magnitude
-    if distance < radius * (1 - Config.CircleRadiusTolerance)
-        or distance > radius * (1 + Config.CircleRadiusTolerance) then
+    if distance < radius * (1 - Config.RadiusTolerance)
+        or distance > radius * (1 + Config.RadiusTolerance) then
         return false
     end
 
-    -- No painel mostrado, a faixa vermelha fica no topo do círculo.
-    -- Roblox usa Y crescente para baixo; -90 graus é o topo.
-    local angle = angleDegrees(delta)
+    local angle = math.deg(math.atan2(delta.Y, delta.X))
     local difference = math.abs(((angle + 90 + 180) % 360) - 180)
-    return difference <= Config.CircleAngleTolerance
-end
-
-local function refreshGuiObjectCache(fishing, now)
-    if State.CachedFishingGui ~= fishing
-        or now - State.LastObjectCacheUpdate >= Config.ObjectCacheInterval then
-
-        local objects, greenCandidates = {}, {}
-        for _, obj in ipairs(fishing:GetDescendants()) do
-            if obj:IsA("GuiObject") then
-                objects[#objects + 1] = obj
-
-                -- Classifica tamanho/cor apenas ao atualizar o cache,
-                -- em vez de repetir esses testes em todos os ciclos.
-                local size = obj.AbsoluteSize
-                if size.X >= 8 and size.X <= 30
-                    and size.Y >= 8 and size.Y <= 30
-                    and math.abs(size.X - size.Y) <= 8 then
-                    local ok, green = pcall(isGreen, obj)
-                    if ok and green then
-                        greenCandidates[#greenCandidates + 1] = obj
-                    end
-                end
-            end
-        end
-
-        State.CachedGuiObjects = objects
-        State.CachedGreenObjects = greenCandidates
-        State.CachedFishingGui = fishing
-        State.LastObjectCacheUpdate = now
-        State.LastTargetCacheUpdate = 0
-    end
-
-    return State.CachedGuiObjects, State.CachedGreenObjects
-end
-
-local function refreshCircleTarget(fishing, greens, guiObjects, now)
-    if State.CachedCircleCenter
-        and now - State.LastTargetCacheUpdate < Config.TargetCacheInterval then
-        return State.CachedCircleCenter, State.CachedCircleRadius
-    end
-
-    local center, radius = getCircularTarget(fishing, greens, guiObjects)
-    if center and radius then
-        State.CachedCircleCenter = center
-        State.CachedCircleRadius = radius
-        State.LastTargetCacheUpdate = now
-    end
-    return center, radius
+    return difference <= Config.ArcTolerance
 end
 
 local function scanMinigame()
@@ -657,61 +536,55 @@ local function scanMinigame()
     if not fishing then return false end
 
     local now = os.clock()
-    local guiObjects, cachedGreens = refreshGuiObjectCache(fishing, now)
-    local greens = {}
+    refreshObjectCache(fishing, now)
 
-    -- Só percorre os poucos candidatos verdes já classificados.
-    for _, obj in ipairs(cachedGreens) do
-        if obj.Parent and isGuiVisible(obj) then
+    local greens = {}
+    for _, obj in ipairs(State.GreenObjects) do
+        if obj.Parent and isVisible(obj) and isGreen(obj) then
             greens[#greens + 1] = obj
         end
     end
 
     if #greens == 0 then
-        State.PreviousPositions = {}
+        table.clear(State.PreviousPositions)
         table.clear(State.ClickedBalls)
-        State.CachedCircleCenter = nil
-        State.CachedCircleRadius = nil
+        State.CircleCenter, State.CircleRadius = nil, nil
         return false
     end
 
-    local circleCenter, circleRadius =
-        refreshCircleTarget(fishing, greens, guiObjects, now)
-
-    if not circleCenter then
-        State.DetectorMessage = "Não foi possível localizar o centro do círculo"
-        return true
+    if not State.CircleCenter or now - State.LastTargetRefresh >= Config.TargetRefresh then
+        State.CircleCenter, State.CircleRadius = findCircle(fishing, greens, State.GuiObjects)
+        State.LastTargetRefresh = now
     end
 
-    local nextPositions = {}
-    local pressed = 0
+    local center, radius = State.CircleCenter, State.CircleRadius
+    if not center then return true end
 
+    local nextPositions = {}
     for _, ball in ipairs(greens) do
         local pos = centerOf(ball)
         local previous = State.PreviousPositions[ball]
-        local inArc = isInRedArc(pos, circleCenter, circleRadius)
-        local crossed = false
+        local hit = inRedArc(pos, center, radius)
 
-        if previous then
+        -- Interpola o movimento entre ciclos para não perder bolinhas rápidas.
+        if previous and not hit then
             local distance = (pos - previous).Magnitude
-            local steps = math.clamp(math.ceil(distance / 5), 1, 10)
+            local steps = math.clamp(math.ceil(distance / 3), 1, 16)
             for step = 1, steps do
-                if isInRedArc(previous:Lerp(pos, step / steps), circleCenter, circleRadius) then
-                    crossed = true
+                if inRedArc(previous:Lerp(pos, step / steps), center, radius) then
+                    hit = true
                     break
                 end
             end
         end
 
-        if (inArc or crossed) and not State.ClickedBalls[ball]
-            and now - State.LastPress >= Config.Cooldown then
+        if hit and not State.ClickedBalls[ball]
+            and now - State.LastPress >= Config.ClickCooldown then
             State.ClickedBalls[ball] = true
             State.LastPress = now
-            pressed += 1
-            task.spawn(function()
-                pressKey(Enum.KeyCode.Space)
-            end)
-        elseif not inArc and not crossed then
+            State.Hits += 1
+            task.spawn(pressKey, Enum.KeyCode.Space)
+        elseif not hit then
             State.ClickedBalls[ball] = nil
         end
 
@@ -719,31 +592,20 @@ local function scanMinigame()
     end
 
     State.PreviousPositions = nextPositions
-    if pressed > 0 then State.Hits += pressed end
-    State.DetectorMessage = "Alvos verdes: " .. tostring(#greens)
     return true
 end
 
 --==================================================
--- FISH BUTTON
+-- AUTO CAST
 --==================================================
 
-local function findFishButton(forceRefresh)
-    local now = os.clock()
+local function findFishButton()
     local cached = State.CachedFishButton
-
-    if not forceRefresh and cached and cached.Parent and cached.Visible
-        and now - State.LastFishButtonSearch < Config.CastButtonRefresh then
+    if cached and cached.Parent and cached.Visible then
         return cached
     end
 
-    if not forceRefresh and now - State.LastFishButtonSearch < Config.CastButtonRefresh then
-        return nil
-    end
-
-    State.LastFishButtonSearch = now
     State.CachedFishButton = nil
-
     for _, obj in ipairs(PlayerGui:GetDescendants()) do
         if obj:IsA("TextButton") and obj.Visible then
             local text = string.lower((obj.Text or ""):gsub("%s+", " "))
@@ -753,185 +615,83 @@ local function findFishButton(forceRefresh)
             end
         end
     end
-
-    return nil
 end
 
---==================================================
--- QUICK CAST / AUTORETRY
---==================================================
-
 local function autoCast()
-    if not Config.AutoCast or not Config.AutoRetry then return end
     if State.Fishing or State.CastPending then return end
-
     local now = os.clock()
-    local delay = Config.QuickCast and Config.CastDelay or 1.2
+    if now - State.LastCast < Config.CastDelay then return end
 
-    if now - State.LastCast < delay then return end
-    if now - State.LastCastAttempt < 0.20 then return end
+    local fishButton = findFishButton()
+    if not fishButton then
+        State.CachedFishButton = nil
+        return
+    end
 
-    local button = findFishButton(false)
-    if not button then return end
-
-    State.LastCastAttempt = now
-    State.LastCast = now
     State.CastPending = true
-
+    State.LastCast = now
     task.spawn(function()
         local ok = pressKey(Enum.KeyCode.E)
-        task.wait(Config.CastInputTimeout)
+        task.wait(0.25)
         State.CastPending = false
-
-        if not button.Parent or not button.Visible then
+        if not ok or not fishButton.Parent or not fishButton.Visible then
             State.CachedFishButton = nil
-        elseif not ok then
-            State.LastCast = 0
+            State.LastCast = os.clock() - 0.25
         end
     end)
 end
 
 --==================================================
--- HISTORY
+-- CONTROLS / MAIN LOOP
 --==================================================
 
-local function addHistory(amount)
-    for i=1,amount do
-        table.insert(State.History,1,
-            os.date("%H:%M:%S").."  •  Peixe capturado")
-    end
+local function setEnabled(value)
+    State.Enabled = value
+    Config.Enabled = value
 
-    while #State.History > Config.HistoryLimit do
-        table.remove(State.History)
-    end
+    MainToggle.Text = value and "DESATIVAR AUTOFISH" or "ATIVAR AUTOFISH"
+    MainToggle.BackgroundColor3 = value
+        and Color3.fromRGB(175, 65, 70)
+        or Color3.fromRGB(25, 145, 100)
 
-    HistoryText.Text = table.concat(State.History,"\n")
-end
+    Status.Text = value and "● AUTOFISH ATIVO" or "● DESLIGADO"
+    Status.TextColor3 = value
+        and Color3.fromRGB(65, 235, 175)
+        or Color3.fromRGB(220, 90, 90)
 
---==================================================
--- COUNTER UPDATE
---==================================================
-
-local function updateCounters()
-    local now = os.clock()
-    if now-State.LastCounterUpdate < Config.CounterInterval then return end
-    State.LastCounterUpdate = now
-
-    local current,maximum = getBackpack()
-
-    if current then
-        BackpackValue.Text = current.." / "..maximum
-
-        if State.LastBackpackCount == nil then
-            State.LastBackpackCount = current
-        elseif current > State.LastBackpackCount then
-            local gained = current-State.LastBackpackCount
-            State.FishCaught += gained
-            addHistory(gained)
-        elseif current < State.LastBackpackCount then
-        end
-
-        State.LastBackpackCount = current
-    end
-
-    local coins = getCoins()
-    if coins then
-        State.Coins = coins
-        CoinValue.Text = tostring(coins)
-    end
-
-    FishValue.Text = tostring(State.FishCaught)
-
-    StatFish.Text = tostring(State.FishCaught)
-    StatHits.Text = tostring(State.Hits)
-    StatCoins.Text = State.Coins and tostring(State.Coins) or "--"
-
-    local elapsed = math.floor(now-State.StartedAt)
-    StatTime.Text = string.format("%02d:%02d",
-        math.floor(elapsed/60),elapsed%60)
-end
-
---==================================================
--- MAIN TOGGLE
---==================================================
-
-MainToggle.MouseButton1Click:Connect(function()
-    Config.Enabled = not Config.Enabled
-
-    MainToggle.Text = Config.Enabled
-        and "DESATIVAR AUTOFISH"
-        or "ATIVAR AUTOFISH"
-
-    MainToggle.BackgroundColor3 = Config.Enabled
-        and Color3.fromRGB(175,65,70)
-        or Color3.fromRGB(25,145,100)
-
-    Status.Text = Config.Enabled
-        and "● AUTOFISH ATIVO"
-        or "● DESLIGADO"
-
-    Status.TextColor3 = Config.Enabled
-        and Color3.fromRGB(65,235,175)
-        or Color3.fromRGB(220,90,90)
-
-    table.clear(State.Previous)
+    State.LastCast = 0
+    State.LastMinigameSeen = 0
+    State.Fishing = false
+    State.CachedFishingGui = nil
+    State.CachedFishButton = nil
+    State.CircleCenter, State.CircleRadius = nil, nil
     table.clear(State.PreviousPositions)
     table.clear(State.ClickedBalls)
-    State.CachedFishingGui = nil
-    State.CachedGuiObjects = {}
-    State.CachedGreenObjects = {}
-    State.CachedCircleCenter = nil
-    State.CachedCircleRadius = nil
-end)
-
---==================================================
--- MINIMIZE / RESTORE
---==================================================
-
-local minimized = false
-local expandedSize = UDim2.fromOffset(350,440)
-local minimizedSize = UDim2.fromOffset(350,65)
-local panelBody = {StatusCard, TabBar, Pages}
-
-local function setMinimized(value)
-    minimized = value
-
-    for _, obj in ipairs(panelBody) do
-        if obj and obj.Parent then
-            obj.Visible = not minimized
-        end
-    end
-
-    Panel.Size = minimized and minimizedSize or expandedSize
-    Minimize.Text = minimized and "+" or "—"
-    Minimize.BackgroundColor3 = minimized
-        and Color3.fromRGB(25,145,100)
-        or Color3.fromRGB(35,52,62)
-
-    Header.Visible = true
-    Close.Visible = true
-    Minimize.Visible = true
 end
 
-Minimize.Activated:Connect(function()
-    setMinimized(not minimized)
+MainToggle.Activated:Connect(function()
+    setEnabled(not Config.Enabled)
 end)
 
---==================================================
--- CLEANUP
---==================================================
+local minimized = false
+local expandedSize = UDim2.fromOffset(330, 390)
+local minimizedSize = UDim2.fromOffset(330, 58)
+
+Minimize.Activated:Connect(function()
+    minimized = not minimized
+    StatusCard.Visible = not minimized
+    Tabs.Visible = not minimized
+    Content.Visible = not minimized
+    Panel.Size = minimized and minimizedSize or expandedSize
+    Minimize.Text = minimized and "+" or "—"
+end)
 
 local connection
-
 Close.Activated:Connect(function()
-    Config.Enabled = false
+    setEnabled(false)
     if connection then connection:Disconnect() end
     GUI:Destroy()
 end)
-
---==================================================
--- MAIN LOOP
---==================================================
 
 connection = RunService.Heartbeat:Connect(function()
     if not GUI.Parent then
@@ -940,41 +700,45 @@ connection = RunService.Heartbeat:Connect(function()
     end
 
     updateCounters()
-
     if not Config.Enabled then return end
 
-    if os.clock()-State.LastScan < Config.ScanInterval then return end
-    State.LastScan = os.clock()
+    local now = os.clock()
+    if now - State.LastScan < Config.ScanInterval then return end
+    State.LastScan = now
 
     local fishing = getFishing()
-
     if not fishing then
         State.Fishing = false
         State.CachedFishingGui = nil
-        State.CachedGuiObjects = {}
-        State.CachedGreenObjects = {}
-        State.CachedCircleCenter = nil
-        State.CachedCircleRadius = nil
-        Status.Text = "● AGUARDANDO PESCA"
+        State.GuiObjects = {}
+        State.GreenObjects = {}
+        State.CircleCenter, State.CircleRadius = nil, nil
+        Status.Text = "● PROCURANDO PESCA"
+        autoCast()
         return
     end
 
     local active = scanMinigame()
-
     if active then
         State.Fishing = true
-        State.LastMinigameSeen = os.clock()
+        State.LastMinigameSeen = now
         Status.Text = "● MINIGAME ATIVO"
     else
-        local transitionGrace = (os.clock() - State.LastMinigameSeen) < 0.85
-        State.Fishing = transitionGrace
-        table.clear(State.Previous)
-
+        State.Fishing = (now - State.LastMinigameSeen) < 0.75
         if not State.Fishing then
+            table.clear(State.PreviousPositions)
             autoCast()
             Status.Text = "● AGUARDANDO PRÓXIMA PESCA"
         end
     end
 end)
 
-print("[ABYSSAL] V6.2.1 REFINED CARREGADO")
+-- Primeira leitura para registrar o valor atual da mochila sem contar peixes antigos.
+task.defer(function()
+    task.wait(1)
+    local current = getBackpack()
+    if current then State.LastBackpackCount = current end
+    scanCatchNotifications()
+end)
+
+print("[ABYSSAL] V7.0 CARREGADO")
