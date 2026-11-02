@@ -1,5 +1,5 @@
 --==================================================
--- ABYSSAL AUTOFISH | V7.0
+-- ABYSSAL AUTOFISH | V7.3
 -- UI simplificada + historico de raridade
 --==================================================
 
@@ -26,6 +26,13 @@ local Config = {
     ArcTolerance = 43,
     RadiusTolerance = 0.32,
     HistoryLimit = 10,
+    RarityFilter = {
+        Epic = true,
+        Mythical = true,
+        Legendary = true,
+        Common = true,
+        Uncommon = true,
+    },
 }
 
 local State = {
@@ -52,6 +59,7 @@ local State = {
     History = {},
     SeenCatchMessages = {},
     StartedAt = os.clock(),
+    SavedFarmPosition = nil,
 }
 
 --==================================================
@@ -147,7 +155,7 @@ end
 
 label(Header, "ABYSSAL", 21, Color3.fromRGB(65, 235, 175),
     UDim2.fromOffset(15, 7), UDim2.fromOffset(190, 25))
-label(Header, "AUTOFISH V7.2  |  SMART AUTOFISH", 8,
+label(Header, "AUTOFISH V7.3  |  RARITY FILTER", 8,
     Color3.fromRGB(145, 165, 180),
     UDim2.fromOffset(17, 34), UDim2.fromOffset(230, 14))
 
@@ -206,6 +214,7 @@ end
 local FishPage = makePage()
 local InventoryPage = makePage()
 local StatsPage = makePage()
+local FilterPage = makePage()
 FishPage.Visible = true
 
 local function section(page, text)
@@ -260,12 +269,13 @@ end
 
 local function tab(name, x, page)
     local b = button(Tabs, name, UDim2.fromOffset(x, 0),
-        UDim2.fromOffset(104, 30), Color3.fromRGB(32, 48, 61))
-    b.TextSize = 9
+        UDim2.fromOffset(79, 30), Color3.fromRGB(32, 48, 61))
+    b.TextSize = 8
     b.Activated:Connect(function()
         FishPage.Visible = page == FishPage
         InventoryPage.Visible = page == InventoryPage
         StatsPage.Visible = page == StatsPage
+        FilterPage.Visible = page == FilterPage
         for _, item in ipairs(Tabs:GetChildren()) do
             if item:IsA("TextButton") then
                 item.BackgroundColor3 = item == b
@@ -277,8 +287,9 @@ local function tab(name, x, page)
 end
 
 tab("PESCA", 0, FishPage)
-tab("INVENTARIO", 112, InventoryPage)
-tab("ESTATISTICAS", 224, StatsPage)
+tab("INVENT.", 83, InventoryPage)
+tab("STATS", 166, StatsPage)
+tab("FILTROS", 249, FilterPage)
 local firstTab = Tabs:FindFirstChildWhichIsA("TextButton")
 if firstTab then firstTab.BackgroundColor3 = Color3.fromRGB(25, 145, 100) end
 
@@ -320,6 +331,111 @@ local HistoryText = label(HistoryFrame, "Nenhuma captura detectada.",
     UDim2.fromOffset(10, 8), UDim2.new(1, -20, 1, -16))
 HistoryText.TextYAlignment = Enum.TextYAlignment.Top
 HistoryText.TextWrapped = true
+
+--==================================================
+-- RARITY FILTERS + FARM WAYPOINT
+--==================================================
+
+section(FilterPage, "RARIDADES QUE APARECEM NO HISTORICO")
+
+local rarityLabels = {
+    {key = "Epic", label = "Épico"},
+    {key = "Mythical", label = "Mítico"},
+    {key = "Legendary", label = "Lendário"},
+    {key = "Common", label = "Comum"},
+    {key = "Uncommon", label = "Incomum"},
+}
+
+local function rarityOption(item)
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -5, 0, 38)
+    row.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
+    row.Parent = FilterPage
+    row.LayoutOrder = #FilterPage:GetChildren()
+    corner(row, 8)
+
+    label(row, item.label, 10, Color3.fromRGB(220, 230, 235),
+        UDim2.fromOffset(11, 0), UDim2.new(1, -92, 1, 0))
+
+    local toggle = button(row, Config.RarityFilter[item.key] and "MOSTRAR" or "OCULTAR",
+        UDim2.new(1, -86, 0, 5), UDim2.fromOffset(75, 28),
+        Config.RarityFilter[item.key] and Color3.fromRGB(25, 145, 100)
+            or Color3.fromRGB(75, 85, 100))
+
+    toggle.Activated:Connect(function()
+        Config.RarityFilter[item.key] = not Config.RarityFilter[item.key]
+        toggle.Text = Config.RarityFilter[item.key] and "MOSTRAR" or "OCULTAR"
+        toggle.BackgroundColor3 = Config.RarityFilter[item.key]
+            and Color3.fromRGB(25, 145, 100)
+            or Color3.fromRGB(75, 85, 100)
+    end)
+end
+
+for _, item in ipairs(rarityLabels) do
+    rarityOption(item)
+end
+
+local filterNote = label(FilterPage,
+    "As opções controlam quais capturas entram no histórico. Elas não alteram a raridade gerada pelo jogo.",
+    9, Color3.fromRGB(135, 155, 170),
+    UDim2.fromOffset(5, 0), UDim2.new(1, -10, 0, 42))
+filterNote.TextWrapped = true
+filterNote.LayoutOrder = #FilterPage:GetChildren()
+
+section(FilterPage, "PONTO DE FARM")
+
+local savePositionButton = button(FilterPage, "SALVAR POSIÇÃO ATUAL",
+    UDim2.new(), UDim2.new(1, -5, 0, 36), Color3.fromRGB(25, 115, 145))
+savePositionButton.LayoutOrder = #FilterPage:GetChildren()
+
+local savedPositionLabel = label(FilterPage, "Nenhuma posição salva nesta sessão.",
+    9, Color3.fromRGB(175, 195, 205),
+    UDim2.fromOffset(5, 0), UDim2.new(1, -10, 0, 38))
+savedPositionLabel.TextWrapped = true
+savedPositionLabel.LayoutOrder = #FilterPage:GetChildren()
+
+local copyPositionButton = button(FilterPage, "COPIAR COORDENADAS",
+    UDim2.new(), UDim2.new(1, -5, 0, 34), Color3.fromRGB(45, 75, 95))
+copyPositionButton.LayoutOrder = #FilterPage:GetChildren()
+
+local waypointNote = label(FilterPage,
+    "O ponto salvo serve como referência. O retorno por teleporte precisa ser feito por uma função oficial do próprio jogo; este script não força teleporte pelo executor.",
+    9, Color3.fromRGB(135, 155, 170),
+    UDim2.fromOffset(5, 0), UDim2.new(1, -10, 0, 55))
+waypointNote.TextWrapped = true
+waypointNote.LayoutOrder = #FilterPage:GetChildren()
+
+savePositionButton.Activated:Connect(function()
+    local character = Player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        savedPositionLabel.Text = "Personagem ainda não está disponível."
+        return
+    end
+
+    local pos = root.Position
+    State.SavedFarmPosition = Vector3.new(pos.X, pos.Y, pos.Z)
+    savedPositionLabel.Text = string.format(
+        "Posição salva: X %.1f | Y %.1f | Z %.1f",
+        pos.X, pos.Y, pos.Z
+    )
+end)
+
+copyPositionButton.Activated:Connect(function()
+    local pos = State.SavedFarmPosition
+    if not pos then
+        savedPositionLabel.Text = "Salve uma posição antes de copiar."
+        return
+    end
+
+    local coords = string.format("X=%.2f, Y=%.2f, Z=%.2f", pos.X, pos.Y, pos.Z)
+    if setclipboard then
+        setclipboard(coords)
+        savedPositionLabel.Text = "Coordenadas copiadas: " .. coords
+    else
+        savedPositionLabel.Text = coords
+    end
+end)
 
 --==================================================
 -- INPUT / UTILITIES
@@ -387,17 +503,27 @@ end
 --==================================================
 
 local Rarities = {
-    "Secret", "Mythical", "Legendary", "Epic",
-    "Rare", "Uncommon", "Common",
+    "Mythical", "Legendary", "Uncommon", "Common", "Epic",
+    "Secret", "Rare",
+}
+
+local RarityAliases = {
+    Mythic = "Mythical",
+    Mythical = "Mythical",
+    Epic = "Epic",
+    Legendary = "Legendary",
+    Common = "Common",
+    Uncommon = "Uncommon",
 }
 
 local function getRarity(text)
     local lower = string.lower(text or "")
     for _, rarity in ipairs(Rarities) do
         if lower:find(string.lower(rarity), 1, true) then
-            return rarity
+            return RarityAliases[rarity] or rarity
         end
     end
+    if lower:find("mythic", 1, true) then return "Mythical" end
     return nil
 end
 
@@ -410,7 +536,9 @@ local function addCatch(message)
     if message == "" or State.SeenCatchMessages[message] then return end
     State.SeenCatchMessages[message] = os.clock()
 
-    local rarity = getRarity(message) or "Raridade não identificada"
+    local rarity = getRarity(message)
+    if not rarity or not Config.RarityFilter[rarity] then return end
+
     table.insert(State.History, 1, os.date("%H:%M:%S") .. "  •  " .. message .. "  [" .. rarity .. "]")
 
     while #State.History > Config.HistoryLimit do
