@@ -13,6 +13,10 @@ local PlayerGui = Player:WaitForChild("PlayerGui")
 
 local Config = {
     Enabled = false,
+    AutoCast = true,
+    AutoReel = true,
+    QuickCast = true,
+    AutoRetry = true,
     ScanInterval = 0.045,
     ObjectRefresh = 0.65,
     TargetRefresh = 0.12,
@@ -69,8 +73,8 @@ GUI.Parent = (gethui and gethui()) or CoreGui
 
 local Panel = Instance.new("Frame")
 Panel.Name = "Main"
-Panel.Size = UDim2.fromOffset(330, 390)
-Panel.Position = UDim2.new(0, 28, 0.22, 0)
+Panel.Size = UDim2.fromOffset(360, 475)
+Panel.Position = UDim2.new(0, 28, 0.18, 0)
 Panel.BackgroundColor3 = Color3.fromRGB(13, 19, 29)
 Panel.BorderSizePixel = 0
 Panel.Active = true
@@ -96,6 +100,21 @@ Header.BackgroundColor3 = Color3.fromRGB(19, 31, 42)
 Header.BorderSizePixel = 0
 Header.Parent = Panel
 corner(Header, 14)
+local headerGradient = Instance.new("UIGradient")
+headerGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(20, 48, 54)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(17, 27, 42))
+})
+headerGradient.Rotation = 0
+headerGradient.Parent = Header
+
+local panelGradient = Instance.new("UIGradient")
+panelGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(17, 27, 39)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(10, 15, 24))
+})
+panelGradient.Rotation = 90
+panelGradient.Parent = Panel
 
 local function label(parent, text, size, color, pos, dims)
     local obj = Instance.new("TextLabel")
@@ -128,7 +147,7 @@ end
 
 label(Header, "ABYSSAL", 21, Color3.fromRGB(65, 235, 175),
     UDim2.fromOffset(15, 7), UDim2.fromOffset(190, 25))
-label(Header, "AUTOFISH V7.0  |  RARITY TRACKER", 8,
+label(Header, "AUTOFISH V7.2  |  SMART AUTOFISH", 8,
     Color3.fromRGB(145, 165, 180),
     UDim2.fromOffset(17, 34), UDim2.fromOffset(230, 14))
 
@@ -139,24 +158,29 @@ local Close = button(Header, "X", UDim2.new(1, -37, 0, 14),
 
 local StatusCard = Instance.new("Frame")
 StatusCard.Position = UDim2.fromOffset(12, 69)
-StatusCard.Size = UDim2.new(1, -24, 0, 34)
+StatusCard.Size = UDim2.new(1, -24, 0, 36)
 StatusCard.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
 StatusCard.Parent = Panel
 corner(StatusCard, 8)
+local statusStroke = Instance.new("UIStroke")
+statusStroke.Color = Color3.fromRGB(45, 75, 82)
+statusStroke.Transparency = 0.45
+statusStroke.Thickness = 1
+statusStroke.Parent = StatusCard
 
 local Status = label(StatusCard, "● DESLIGADO", 10,
     Color3.fromRGB(220, 90, 90), UDim2.fromOffset(10, 0),
     UDim2.new(1, -20, 1, 0))
 
 local Tabs = Instance.new("Frame")
-Tabs.Position = UDim2.fromOffset(12, 112)
-Tabs.Size = UDim2.new(1, -24, 0, 30)
+Tabs.Position = UDim2.fromOffset(12, 114)
+Tabs.Size = UDim2.new(1, -24, 0, 32)
 Tabs.BackgroundTransparency = 1
 Tabs.Parent = Panel
 
 local Content = Instance.new("Frame")
-Content.Position = UDim2.fromOffset(12, 150)
-Content.Size = UDim2.new(1, -24, 1, -162)
+Content.Position = UDim2.fromOffset(12, 154)
+Content.Size = UDim2.new(1, -24, 1, -166)
 Content.BackgroundTransparency = 1
 Content.Parent = Panel
 
@@ -180,7 +204,8 @@ local function makePage()
 end
 
 local FishPage = makePage()
-local CatchPage = makePage()
+local InventoryPage = makePage()
+local StatsPage = makePage()
 FishPage.Visible = true
 
 local function section(page, text)
@@ -194,6 +219,7 @@ local function valueRow(page, name, initial)
     row.Size = UDim2.new(1, -5, 0, 34)
     row.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
     row.Parent = page
+    row.LayoutOrder = #page:GetChildren()
     corner(row, 7)
 
     label(row, name, 10, Color3.fromRGB(160, 180, 195),
@@ -205,12 +231,41 @@ local function valueRow(page, name, initial)
     return value
 end
 
+local function optionRow(page, title, key, defaultValue)
+    Config[key] = Config[key] == nil and defaultValue or Config[key]
+
+    local row = Instance.new("Frame")
+    row.Size = UDim2.new(1, -5, 0, 38)
+    row.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
+    row.Parent = page
+    row.LayoutOrder = #page:GetChildren()
+    corner(row, 8)
+
+    label(row, title, 10, Color3.fromRGB(220, 230, 235),
+        UDim2.fromOffset(11, 0), UDim2.new(1, -92, 1, 0))
+
+    local toggle = button(row, Config[key] and "ON" or "OFF",
+        UDim2.new(1, -68, 0, 5), UDim2.fromOffset(56, 28),
+        Config[key] and Color3.fromRGB(25, 145, 100) or Color3.fromRGB(75, 85, 100))
+
+    toggle.Activated:Connect(function()
+        Config[key] = not Config[key]
+        toggle.Text = Config[key] and "ON" or "OFF"
+        toggle.BackgroundColor3 = Config[key]
+            and Color3.fromRGB(25, 145, 100)
+            or Color3.fromRGB(75, 85, 100)
+    end)
+    return toggle
+end
+
 local function tab(name, x, page)
     local b = button(Tabs, name, UDim2.fromOffset(x, 0),
-        UDim2.fromOffset(145, 29), Color3.fromRGB(32, 48, 61))
+        UDim2.fromOffset(104, 30), Color3.fromRGB(32, 48, 61))
+    b.TextSize = 9
     b.Activated:Connect(function()
         FishPage.Visible = page == FishPage
-        CatchPage.Visible = page == CatchPage
+        InventoryPage.Visible = page == InventoryPage
+        StatsPage.Visible = page == StatsPage
         for _, item in ipairs(Tabs:GetChildren()) do
             if item:IsA("TextButton") then
                 item.BackgroundColor3 = item == b
@@ -222,25 +277,42 @@ local function tab(name, x, page)
 end
 
 tab("PESCA", 0, FishPage)
-tab("CAPTURAS", 151, CatchPage)
+tab("INVENTARIO", 112, InventoryPage)
+tab("ESTATISTICAS", 224, StatsPage)
+local firstTab = Tabs:FindFirstChildWhichIsA("TextButton")
+if firstTab then firstTab.BackgroundColor3 = Color3.fromRGB(25, 145, 100) end
 
 section(FishPage, "CONTROLE")
 local MainToggle = button(FishPage, "ATIVAR AUTOFISH",
     UDim2.new(), UDim2.new(1, -5, 0, 39),
     Color3.fromRGB(25, 145, 100))
-MainToggle.LayoutOrder = 2
+MainToggle.LayoutOrder = #FishPage:GetChildren()
 
-section(FishPage, "SESSAO")
-local BackpackValue = valueRow(FishPage, "Mochila", "-- / --")
-local FishValue = valueRow(FishPage, "Peixes capturados", "0")
-local HitValue = valueRow(FishPage, "Acertos no minigame", "0")
-local TimeValue = valueRow(FishPage, "Tempo ativo", "00:00")
+section(FishPage, "OPCOES DE AUTOMACAO")
+optionRow(FishPage, "Auto Cast — arremessar automaticamente", "AutoCast", true)
+optionRow(FishPage, "Auto Reel — jogar o minigame", "AutoReel", true)
+optionRow(FishPage, "Quick Cast — reduzir espera entre arremessos", "QuickCast", true)
+optionRow(FishPage, "Auto Retry — tentar novamente após captura", "AutoRetry", true)
 
-section(CatchPage, "ULTIMAS CAPTURAS")
+section(InventoryPage, "INVENTARIO")
+local BackpackValue = valueRow(InventoryPage, "Mochila", "-- / --")
+local FishValue = valueRow(InventoryPage, "Peixes capturados", "0")
+local InventoryNote = label(InventoryPage,
+    "A contagem usa a quantidade da mochila do jogo.",
+    9, Color3.fromRGB(135, 155, 170),
+    UDim2.fromOffset(5, 0), UDim2.new(1, -10, 0, 30))
+InventoryNote.LayoutOrder = #InventoryPage:GetChildren()
+
+section(StatsPage, "ESTATISTICAS DA SESSAO")
+local HitValue = valueRow(StatsPage, "Acertos no minigame", "0")
+local TimeValue = valueRow(StatsPage, "Tempo ativo", "00:00")
+
+section(StatsPage, "HISTORICO DE CAPTURAS")
 local HistoryFrame = Instance.new("Frame")
 HistoryFrame.Size = UDim2.new(1, -5, 0, 245)
 HistoryFrame.BackgroundColor3 = Color3.fromRGB(24, 34, 45)
-HistoryFrame.Parent = CatchPage
+HistoryFrame.Parent = StatsPage
+HistoryFrame.LayoutOrder = #StatsPage:GetChildren()
 corner(HistoryFrame, 8)
 
 local HistoryText = label(HistoryFrame, "Nenhuma captura detectada.",
@@ -354,29 +426,25 @@ local function inspectCatchText(obj)
     if text == "" then return end
 
     local rarity = getRarity(text)
-    local hasCatchDetails = text:lower():find("kg", 1, true)
-        or text:lower():find("coins", 1, true)
+    local lower = text:lower()
+    local hasWeight = lower:find("kg", 1, true) ~= nil
+    local hasCatchDetails = hasWeight or lower:find("coins", 1, true) ~= nil
 
     if rarity and hasCatchDetails then
-        -- Tenta incluir o nome do peixe exibido imediatamente acima/abaixo.
-        local fishName = nil
-        local parent = obj.Parent
-        if parent then
-            for _, sibling in ipairs(parent:GetChildren()) do
-                if sibling ~= obj and (sibling:IsA("TextLabel") or sibling:IsA("TextButton")) then
-                    local candidate = cleanText(sibling.Text)
-                    if candidate ~= "" and not getRarity(candidate)
-                        and not candidate:lower():find("kg", 1, true)
-                        and not candidate:lower():find("coins", 1, true) then
-                        fishName = candidate
-                        break
-                    end
-                end
-            end
-        end
+        -- Remove textos de interface que aparecem junto da notificação.
+        local details = text
+            :gsub("[Pp]ress%s+[Ee]%s+to%s+fish%s+again%s*[%-%—:]?%s*", "")
+            :gsub("[Ff]ish%s*%([Ee]%)%s*", "")
+            :gsub("%s*[·•|]?%s*[%d,]+%s*[Cc]oins?.*$", "")
+            :gsub("%s*[·•|]?%s*[%d,]+%s*[Cc]oins?", "")
+            :gsub("%s+", " ")
+            :gsub("^%s+", "")
+            :gsub("%s+$", "")
 
-        local details = text:gsub("%s*[·•|]?%s*[%d,]+%s*[Cc]oins?.*$", "")
-        addCatch((fishName and (fishName .. " — ") or "") .. details)
+        -- O próprio texto pode conter o nome do peixe antes do peso.
+        -- Se só houver peso e raridade, registra esses dados sem inventar um nome.
+        if details == "" then details = rarity end
+        addCatch(details)
     end
 end
 
@@ -618,9 +686,11 @@ local function findFishButton()
 end
 
 local function autoCast()
-    if State.Fishing or State.CastPending then return end
+    if not Config.AutoCast or State.Fishing or State.CastPending then return end
+    if State.HasCast and not Config.AutoRetry then return end
     local now = os.clock()
-    if now - State.LastCast < Config.CastDelay then return end
+    local waitTime = Config.QuickCast and Config.CastDelay or 1.15
+    if now - State.LastCast < waitTime then return end
 
     local fishButton = findFishButton()
     if not fishButton then
@@ -630,6 +700,7 @@ local function autoCast()
 
     State.CastPending = true
     State.LastCast = now
+    State.HasCast = true
     task.spawn(function()
         local ok = pressKey(Enum.KeyCode.E)
         task.wait(0.25)
@@ -660,6 +731,7 @@ local function setEnabled(value)
         or Color3.fromRGB(220, 90, 90)
 
     State.LastCast = 0
+    State.HasCast = false
     State.LastMinigameSeen = 0
     State.Fishing = false
     State.CachedFishingGui = nil
@@ -674,8 +746,8 @@ MainToggle.Activated:Connect(function()
 end)
 
 local minimized = false
-local expandedSize = UDim2.fromOffset(330, 390)
-local minimizedSize = UDim2.fromOffset(330, 58)
+local expandedSize = UDim2.fromOffset(360, 475)
+local minimizedSize = UDim2.fromOffset(360, 58)
 
 Minimize.Activated:Connect(function()
     minimized = not minimized
@@ -718,7 +790,10 @@ connection = RunService.Heartbeat:Connect(function()
         return
     end
 
-    local active = scanMinigame()
+    local active = false
+    if Config.AutoReel then
+        active = scanMinigame()
+    end
     if active then
         State.Fishing = true
         State.LastMinigameSeen = now
@@ -728,7 +803,9 @@ connection = RunService.Heartbeat:Connect(function()
         if not State.Fishing then
             table.clear(State.PreviousPositions)
             autoCast()
-            Status.Text = "● AGUARDANDO PRÓXIMA PESCA"
+            Status.Text = Config.AutoReel
+                and "● AGUARDANDO PRÓXIMA PESCA"
+                or "● AUTO REEL DESATIVADO"
         end
     end
 end)
@@ -741,4 +818,4 @@ task.defer(function()
     scanCatchNotifications()
 end)
 
-print("[ABYSSAL] V7.0 CARREGADO")
+print("[ABYSSAL] V7.2 CARREGADO")
